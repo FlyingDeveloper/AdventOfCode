@@ -1,0 +1,20 @@
+{
+  "name": "advent-of-code-1",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "dependencies": {
+    "lodash": "^4.17.2",
+    "typescript": "^2.0.10"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.14.41",
+    "@types/node": "0.0.2",
+    "typescript": "^2.0.10"
+  },
+  "scripts": {
+    "start": "tsc && node main.js"
+  },
+  "author": "",
+  "license": "ISC"
+}
