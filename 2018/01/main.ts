@@ -1,7 +1,8 @@
 import { default as fs } from 'fs';
+import Utils from 'utils';
 
-fs.readFile('input.txt', { encoding: 'utf8' }, (err:any, input:string) => {
-  let result = input.split('\n').map(Number).reduce((current:number, accumulator:number) => {
+Utils.GetLinesAsNumber().then(lines => {
+  let result = lines.reduce((current:number, accumulator:number) => {
     if (isNaN(current)) {
       return accumulator;
     }

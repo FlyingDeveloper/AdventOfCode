@@ -1,8 +1,8 @@
 import { default as fs } from 'fs';
+import Utils from 'utils';
 
-fs.readFile('input.txt', { encoding: 'utf8' }, (err:any, input:string) => {
+Utils.GetLinesAsNumber().then(splitInput => {
   let visitedNumbers:{[num:number]: boolean} = {};
-  let splitInput = input.split('\n').filter(x => x !== '').map(Number)
   let i = 0;
   let accumulator = 0;
   

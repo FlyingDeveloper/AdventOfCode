@@ -11,3 +11,9 @@ typescript@^3.2.2:
   version "3.2.2"
   resolved "http://artifactory.factset.com/artifactory/api/npm/npm/typescript/-/typescript-3.2.2.tgz#fe8101c46aa123f8353523ebdcf5730c2ae493e5"
   integrity sha1-/oEBxGqhI/g1NSPr3PVzDCrkk+U=
+
+"utils@file:utils":
+  version "1.0.0"
+  dependencies:
+    "@types/node" "^10.12.12"
+    typescript "^3.2.2"

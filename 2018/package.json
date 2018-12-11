@@ -5,6 +5,7 @@
   "main": "index.js",
   "license": "MIT",
   "workspaces": [
+    "utils",
     "01",
     "01-2"
   ]

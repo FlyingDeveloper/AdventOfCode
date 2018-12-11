@@ -1,13 +1,13 @@
 {
-  "name": "01",
+  "name": "utils",
   "version": "1.0.0",
-  "main": "index.js",
   "license": "MIT",
-  "devDependencies": {
+  "dependencies": {
     "@types/node": "^10.12.12",
     "typescript": "^3.2.2"
   },
-  "dependencies": {
-    "utils": "file:../utils"
+  "main": "./dist/utils.js",
+  "scripts": {
+    "postinstall": "tsc"
   }
 }
