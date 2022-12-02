@@ -29,9 +29,6 @@ func main() {
 
 		asInt, _ := strconv.Atoi(line)
 		currentElf += asInt
-		if asInt > maxElf {
-			maxElf = asInt
-		}
 	}
 
 	fmt.Println(maxElf)
