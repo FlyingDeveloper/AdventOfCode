@@ -25,6 +25,10 @@ type Position struct {
 	parent *Position
 }
 
+func (p *Position) getKey() string {
+	return fmt.Sprintf("%v,%v", p.x, p.y)
+}
+
 type ByFScore []*Position
 
 func (a ByFScore) Len() int           { return len(a) }
@@ -94,7 +98,7 @@ func isPositionInSlice(p *Position, slice []*Position) (*Position, bool) {
 	return nil, false
 }
 
-func getNeighbors(currentPosition *Position, endPosition *Position, gScore float64, input []string, closedList []*Position) []*Position {
+func getNeighbors(currentPosition *Position, endPosition *Position, gScore float64, input []string, closedList map[string]*Position) []*Position {
 	returnableNeighbors := []*Position{}
 	neighbors := []*Position{}
 	if currentPosition.y > 0 {
@@ -119,7 +123,7 @@ func getNeighbors(currentPosition *Position, endPosition *Position, gScore float
 		n.h = getHScore(n, endPosition)
 		n.g = gScore
 		// Don't include a neighbor if it's in the closed list - it's already been visited
-		_, isInClosedList := isPositionInSlice(n, closedList)
+		_, isInClosedList := closedList[n.getKey()]
 		if n.height <= currentPosition.height+1 && !isInClosedList {
 			returnableNeighbors = append(returnableNeighbors, n)
 		}
@@ -129,8 +133,8 @@ func getNeighbors(currentPosition *Position, endPosition *Position, gScore float
 }
 
 func AStar(startPosition *Position, endPosition *Position, input []string) *Position {
-	openList := []*Position{}                  // The positions that need to be visited
-	closedList := []*Position{}                // Positions that have already been visited
+	openList := []*Position{} // The positions that need to be visited
+	closedList := map[string]*Position{}
 	openList = append(openList, startPosition) // Add the start to the open list
 	startPosition.g = 0                        // Set the g score for the start to zero
 
@@ -138,7 +142,7 @@ func AStar(startPosition *Position, endPosition *Position, input []string) *Posi
 		sort.Sort(ByFScore(openList))
 		currentPosition := openList[0]
 		openList = openList[1:]
-		closedList = append(closedList, currentPosition)
+		closedList[currentPosition.getKey()] = currentPosition
 
 		log.Printf("Visiting %v, %v", currentPosition.x, currentPosition.y)
 		if currentPosition.x == endPosition.x && currentPosition.y == endPosition.y {
