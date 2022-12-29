@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"sort"
-	"strings"
 
 	svg "github.com/ajstarks/svgo"
 )
@@ -79,14 +78,6 @@ func getHScore(positionToScore *Position, endPosition *Position) float64 {
 	return math.Sqrt(cSquared)
 }
 
-func drawLine(endA *Position, endB *Position, canvas *svg.SVG) {
-	startX := endA.x*squareWidth + (squareWidth / 2)
-	startY := endA.y*squareHeight + (squareHeight / 2)
-	endX := endB.x*squareWidth + (squareWidth / 2)
-	endY := endB.y*squareHeight + (squareHeight / 2)
-	canvas.Line(startX, startY, endX, endY, "stroke: black; outline-color:white;outline-style:solid")
-}
-
 func isPositionInSlice(p *Position, slice []*Position) (*Position, bool) {
 	x := p.x
 	y := p.y
@@ -144,7 +135,7 @@ func AStar(startPosition *Position, endPosition *Position, input []string) *Posi
 		openList = openList[1:]
 		closedList[currentPosition.getKey()] = currentPosition
 
-		log.Printf("Visiting %v, %v", currentPosition.x, currentPosition.y)
+		log.Printf("Visiting %v, %v h: %v, g: %v", currentPosition.x, currentPosition.y, currentPosition.h, currentPosition.g)
 		if currentPosition.x == endPosition.x && currentPosition.y == endPosition.y {
 			return currentPosition
 		}
@@ -178,37 +169,6 @@ func AStar(startPosition *Position, endPosition *Position, input []string) *Posi
 	return nil
 }
 
-func drawLandscapeMap(canvas *svg.SVG, input []string) (startPos *Position, endPos *Position) {
-	for il, line := range input {
-		chars := strings.Split(line, "")
-		for ic, char := range chars {
-			var red, green, blue int
-			if char == "S" {
-				startPos = &Position{
-					x:      ic,
-					y:      il,
-					height: getNumericHeight("a"),
-				}
-
-				red, green, blue = 0, 0, 255
-			} else if char == "E" {
-				endPos = &Position{
-					x:      ic,
-					y:      il,
-					height: getNumericHeight("z"),
-				}
-				red, green, blue = 0, 255, 0
-			} else {
-				red, green, blue = getColor(getNumericHeight(char))
-			}
-			style := fmt.Sprintf("fill: rgb(%v, %v, %v); xy: '%v--%v'", red, green, blue, ic, il)
-			canvas.Rect(ic*squareWidth, il*squareHeight, squareWidth, squareHeight, style)
-		}
-	}
-
-	return
-}
-
 func main() {
 	input := getInputLines()
 	if input[len(input)-1] == "" {
@@ -220,9 +180,6 @@ func main() {
 	canvasHeight := len(input) * squareHeight
 	canvas.Start(canvasWidth, canvasHeight)
 	startPos, endPos := drawLandscapeMap(canvas, input)
-
-	canvas.Circle(startPos.x*squareWidth+(squareWidth/2), startPos.y*squareHeight+(squareHeight/2), squareWidth*2, "stroke: yellow; fill-opacity: 0")
-	canvas.Circle(endPos.x*squareWidth+(squareWidth/2), endPos.y*squareHeight+(squareHeight/2), squareWidth*2, "stroke: yellow; fill-opacity: 0")
 
 	currentPosition := Position{
 		startPos.x,
