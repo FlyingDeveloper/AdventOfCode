@@ -1,7 +1,6 @@
 package main
 
 import (
-	"container/list"
 	"fmt"
 	"log"
 	"math"
@@ -25,16 +24,6 @@ type Position struct {
 	g      float64
 	parent *Position
 }
-
-func (p *Position) GetPositionKey() string {
-	return fmt.Sprintf("%v/%v", p.x, p.y)
-}
-
-type ByHeuristic []*Position
-
-func (a ByHeuristic) Len() int           { return len(a) }
-func (a ByHeuristic) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByHeuristic) Less(i, j int) bool { return a[i].h < a[j].h }
 
 type ByFScore []*Position
 
@@ -63,16 +52,6 @@ func getSingleDigitHeight(height int) int {
 	return int(math.Mod(float64(height), 10))
 }
 
-func buildSvg() {
-	width := 500
-	height := 500
-	canvas := svg.New(os.Stdout)
-	canvas.Start(width, height)
-	canvas.Circle(width/2, height/2, 100)
-	canvas.Text(width/2, height/2, "Hello, SVG", "text-anchor:middle;font-size:30px;fill:white")
-	canvas.End()
-}
-
 func getColor(height int) (int, int, int) {
 	if height < 13 {
 		adjustedHeight := (float64(height) / 13) * 255
@@ -83,24 +62,17 @@ func getColor(height int) (int, int, int) {
 	return int(adjustedHeight), 0, 0
 }
 
-func heuristic(currentPosition *Position, endPosition *Position) float64 {
-	// manhattan distance
-	//return math.Abs(float64(currentPosition.x)-float64(currentPosition.y)) + math.Abs(float64(currentPosition.x)-float64(currentPosition.y))
+func getHScore(positionToScore *Position, endPosition *Position) float64 {
 	// a^2 + b^2 = c^2
-	posX := float64(currentPosition.x)
-	posY := float64(currentPosition.y)
+	// pythagorean theorem
+	posX := float64(positionToScore.x)
+	posY := float64(positionToScore.y)
 	endX := float64(endPosition.x)
 	endY := float64(endPosition.y)
 	aSquared := math.Pow(math.Abs(posX-endX), 2)
 	bSquared := math.Pow(math.Abs(posY-endY), 2)
 	cSquared := aSquared + bSquared
 	return math.Sqrt(cSquared)
-}
-
-func getHColor(currentPosition *Position, endPosition *Position) (int, int, int) {
-	h := heuristic(currentPosition, endPosition)
-	adjustedHeuristic := (h / 25) * 255
-	return int(adjustedHeuristic), 127, 127
 }
 
 func drawLine(endA *Position, endB *Position, canvas *svg.SVG) {
@@ -110,69 +82,6 @@ func drawLine(endA *Position, endB *Position, canvas *svg.SVG) {
 	endY := endB.y*squareHeight + (squareHeight / 2)
 	canvas.Line(startX, startY, endX, endY, "stroke: black; outline-color:white;outline-style:solid")
 }
-
-func PrintPath(path *list.List) {
-	output := []string{}
-	for e := path.Front(); e != nil; e = e.Next() {
-		ePosition := e.Value.(*Position)
-		output = append(output, fmt.Sprintf("%v, %v", ePosition.x, ePosition.y))
-	}
-
-	log.Printf(strings.Join(output, " -- "))
-}
-
-var fileCount = 0
-var canvases []*svg.SVG
-
-func drawPathToFile(path list.List, endPosition *Position, width int, height int, input []string) {
-	fileCount++
-	fs, err := os.Create(fmt.Sprintf("/Users/rob/tmp/%v.svg", fileCount))
-	if err != nil {
-		log.Printf("Unable to create file %v", err.Error())
-		return
-	}
-	canvas := svg.New(fs)
-	canvas.Start(width, height)
-
-	for il, line := range input {
-		chars := strings.Split(line, "")
-		for ic, char := range chars {
-			var red, green, blue int
-			if char == "S" {
-				red, green, blue = 0, 0, 255
-			} else if char == "E" {
-				red, green, blue = 0, 255, 0
-			} else {
-				red, green, blue = getColor(getNumericHeight(char))
-			}
-
-			style := fmt.Sprintf("fill: rgb(%v, %v, %v); xy: '%v--%v';", red, green, blue, ic, il)
-			canvas.Rect(0*ic*squareWidth, 0*il*squareHeight, squareWidth, squareHeight, style)
-		}
-	}
-
-	var prev *list.Element
-	for e := path.Front(); e != nil; e = e.Next() {
-		if prev == nil {
-			prev = e
-		} else {
-			drawLine(prev.Value.(*Position), e.Value.(*Position), canvas)
-			prev = e
-		}
-	}
-
-	canvas.Circle(
-		endPosition.x*squareWidth+(squareWidth/2),
-		endPosition.y*squareHeight+(squareHeight/2),
-		squareWidth*2,
-		"stroke: blue; fill-opacity: 0")
-
-	canvas.End()
-	fs.Close()
-}
-
-var navigateCount = 0
-var unusablePositions = map[string]bool{}
 
 func isPositionInSlice(p *Position, slice []*Position) (*Position, bool) {
 	x := p.x
@@ -207,21 +116,23 @@ func getNeighbors(currentPosition *Position, endPosition *Position, gScore float
 
 	for _, n := range neighbors {
 		n.height = getNumericHeight(string(input[n.y][n.x]))
-		n.h = heuristic(n, endPosition)
+		n.h = getHScore(n, endPosition)
 		n.g = gScore
+		// Don't include a neighbor if it's in the closed list - it's already been visited
 		_, isInClosedList := isPositionInSlice(n, closedList)
 		if n.height <= currentPosition.height+1 && !isInClosedList {
 			returnableNeighbors = append(returnableNeighbors, n)
 		}
 	}
+
 	return returnableNeighbors
 }
 
-func navigateBetter(startPosition *Position, endPosition *Position, input []string) *Position {
-	openList := []*Position{}
-	closedList := []*Position{}
-	openList = append(openList, startPosition)
-	startPosition.g = 0
+func AStar(startPosition *Position, endPosition *Position, input []string) *Position {
+	openList := []*Position{}                  // The positions that need to be visited
+	closedList := []*Position{}                // Positions that have already been visited
+	openList = append(openList, startPosition) // Add the start to the open list
+	startPosition.g = 0                        // Set the g score for the start to zero
 
 	for len(openList) > 0 {
 		sort.Sort(ByFScore(openList))
@@ -235,26 +146,63 @@ func navigateBetter(startPosition *Position, endPosition *Position, input []stri
 		}
 
 		neighbors := getNeighbors(currentPosition, endPosition, currentPosition.g+1, input, closedList)
-		for _, n := range neighbors {
-			if p, ok := isPositionInSlice(n, openList); ok {
-				nf := n.g + n.h
-				pf := p.g + p.h
-				if nf < pf {
+		for _, neighbor := range neighbors {
+			if openListPosition, ok := isPositionInSlice(neighbor, openList); ok {
+				// This neighbor is already in the open list
+				// This means that we already plan to visit it
+				// While sitting in the open list, it already has a g score
+				// If the new g score is better, update it and give it a new parent
+				// Otherwise, leave it alone and do nothing
+				neighborFScore := neighbor.g + neighbor.h
+				olpFScore := openListPosition.g + openListPosition.h
+				if neighborFScore < olpFScore {
 					// Replace the position in the open list
-					p.g = n.g
-					p.h = n.h
-					n.parent = currentPosition
+					openListPosition.g = neighbor.g
+					openListPosition.h = neighbor.h
+					openListPosition.parent = currentPosition
 				} else {
 					// Leave the position in the open list - it's better than the one we just found
 				}
 			} else {
 				// add the neighbor to the open list
-				n.parent = currentPosition
-				openList = append(openList, n)
+				neighbor.parent = currentPosition
+				openList = append(openList, neighbor)
 			}
 		}
 	}
+
 	return nil
+}
+
+func drawLandscapeMap(canvas *svg.SVG, input []string) (startPos *Position, endPos *Position) {
+	for il, line := range input {
+		chars := strings.Split(line, "")
+		for ic, char := range chars {
+			var red, green, blue int
+			if char == "S" {
+				startPos = &Position{
+					x:      ic,
+					y:      il,
+					height: getNumericHeight("a"),
+				}
+
+				red, green, blue = 0, 0, 255
+			} else if char == "E" {
+				endPos = &Position{
+					x:      ic,
+					y:      il,
+					height: getNumericHeight("z"),
+				}
+				red, green, blue = 0, 255, 0
+			} else {
+				red, green, blue = getColor(getNumericHeight(char))
+			}
+			style := fmt.Sprintf("fill: rgb(%v, %v, %v); xy: '%v--%v'", red, green, blue, ic, il)
+			canvas.Rect(ic*squareWidth, il*squareHeight, squareWidth, squareHeight, style)
+		}
+	}
+
+	return
 }
 
 func main() {
@@ -267,25 +215,7 @@ func main() {
 	canvasWidth := len(input[0]) * squareWidth
 	canvasHeight := len(input) * squareHeight
 	canvas.Start(canvasWidth, canvasHeight)
-	startPos := Position{-1, -1, int(math.Inf(-1)), math.Inf(1), 0, nil}
-	endPos := Position{-1, -1, int(math.Inf(1)), 0, 0, nil}
-	for il, line := range input {
-		chars := strings.Split(line, "")
-		for ic, char := range chars {
-			var red, green, blue int
-			if char == "S" {
-				startPos = Position{ic, il, getNumericHeight("a"), -1, 0, nil}
-				red, green, blue = 0, 0, 255
-			} else if char == "E" {
-				endPos = Position{ic, il, getNumericHeight("z"), 0, 0, nil}
-				red, green, blue = 0, 255, 0
-			} else {
-				red, green, blue = getColor(getNumericHeight(char))
-			}
-			style := fmt.Sprintf("fill: rgb(%v, %v, %v); xy: '%v--%v'", red, green, blue, ic, il)
-			canvas.Rect(ic*squareWidth, il*squareHeight, squareWidth, squareHeight, style)
-		}
-	}
+	startPos, endPos := drawLandscapeMap(canvas, input)
 
 	canvas.Circle(startPos.x*squareWidth+(squareWidth/2), startPos.y*squareHeight+(squareHeight/2), squareWidth*2, "stroke: yellow; fill-opacity: 0")
 	canvas.Circle(endPos.x*squareWidth+(squareWidth/2), endPos.y*squareHeight+(squareHeight/2), squareWidth*2, "stroke: yellow; fill-opacity: 0")
@@ -298,11 +228,15 @@ func main() {
 		0,
 		nil,
 	}
-	currentPosition.h = heuristic(&currentPosition, &endPos)
 
-	result := navigateBetter(&currentPosition, &endPos, input)
-	fmt.Println(result)
+	result := AStar(&currentPosition, endPos, input)
+	stepCount := drawPathFromEndToStart(result, canvas)
 
+	canvas.End()
+	log.Printf("Step count: %v", stepCount)
+}
+
+func drawPathFromEndToStart(result *Position, canvas *svg.SVG) int {
 	var p *Position
 	p = result
 	stepCount := 0
@@ -314,27 +248,5 @@ func main() {
 
 		p = p.parent
 	}
-
-	canvas.End()
-	log.Printf("Step count: %v", stepCount)
-	return
-
-	/*
-	   path := list.New()
-	   path.PushBack(&currentPosition)
-	   log.Printf("Result: %v", navigate(&currentPosition, &endPos, path, input, map[string]bool{}))
-
-	   var prev *list.Element
-
-	   	for e := path.Front(); e != nil; e = e.Next() {
-	   		if prev == nil {
-	   			prev = e
-	   		} else {
-	   			drawLine(prev.Value.(*Position), e.Value.(*Position), canvas)
-	   			prev = e
-	   		}
-	   	}
-
-	   canvas.End()
-	*/
+	return stepCount
 }
