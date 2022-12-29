@@ -22,6 +22,8 @@ type Position struct {
 	y      int
 	height int
 	h      float64
+	g      float64
+	parent *Position
 }
 
 func (p *Position) GetPositionKey() string {
@@ -34,11 +36,20 @@ func (a ByHeuristic) Len() int           { return len(a) }
 func (a ByHeuristic) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByHeuristic) Less(i, j int) bool { return a[i].h < a[j].h }
 
+type ByFScore []*Position
+
+func (a ByFScore) Len() int           { return len(a) }
+func (a ByFScore) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByFScore) Less(i, j int) bool { return (a[i].h + a[i].g) < (a[j].h + a[j].g) }
+
 func getNumericHeight(character string) int {
 	if len(character) != 1 {
 		log.Fatalf("Unable to determine height of %v", character)
 	}
 
+	if character == "S" {
+		return getNumericHeight("a")
+	}
 	if character == "E" {
 		return getNumericHeight("z")
 	}
@@ -63,8 +74,13 @@ func buildSvg() {
 }
 
 func getColor(height int) (int, int, int) {
-	adjustedHeight := (float64(height) / 6) * 255
-	return int(adjustedHeight), 127, 127
+	if height < 13 {
+		adjustedHeight := (float64(height) / 13) * 255
+		return 0, int(255 - adjustedHeight), 0
+	}
+
+	adjustedHeight := ((float64(height) - 13) / 13) * 255
+	return int(adjustedHeight), 0, 0
 }
 
 func heuristic(currentPosition *Position, endPosition *Position) float64 {
@@ -92,7 +108,7 @@ func drawLine(endA *Position, endB *Position, canvas *svg.SVG) {
 	startY := endA.y*squareHeight + (squareHeight / 2)
 	endX := endB.x*squareWidth + (squareWidth / 2)
 	endY := endB.y*squareHeight + (squareHeight / 2)
-	canvas.Line(startX, startY, endX, endY, "stroke: brown")
+	canvas.Line(startX, startY, endX, endY, "stroke: black; outline-color:white;outline-style:solid")
 }
 
 func PrintPath(path *list.List) {
@@ -129,8 +145,9 @@ func drawPathToFile(path list.List, endPosition *Position, width int, height int
 			} else {
 				red, green, blue = getColor(getNumericHeight(char))
 			}
-			style := fmt.Sprintf("fill: rgb(%v, %v, %v); alt-text: %v", red, green, blue, char)
-			canvas.Rect(ic*squareWidth, il*squareHeight, squareWidth, squareHeight, style)
+
+			style := fmt.Sprintf("fill: rgb(%v, %v, %v); xy: '%v--%v';", red, green, blue, ic, il)
+			canvas.Rect(0*ic*squareWidth, 0*il*squareHeight, squareWidth, squareHeight, style)
 		}
 	}
 
@@ -157,122 +174,115 @@ func drawPathToFile(path list.List, endPosition *Position, width int, height int
 var navigateCount = 0
 var unusablePositions = map[string]bool{}
 
-func navigate(currentPosition *Position, endPosition *Position, path *list.List, input []string, currentPath map[string]bool) bool {
-	// Find candidates to move to
-	navigateCount++
-	if math.Mod(float64(navigateCount), 10000) == 0 {
-		drawPathToFile(*path, endPosition, len(input[0])*squareWidth, len(input)*squareHeight, input)
-	}
-	if path.Len() > 4000 {
-		log.Print("Bailing out at 4000 runs")
-		return false
-	}
-	//PrintPath(path)
-
-	candidates := []*Position{}
-	if currentPosition.x > 1 {
-		// left
-		leftPos := Position{currentPosition.x - 1, currentPosition.y, -1, -1}
-		leftPos.height = getNumericHeight(string(input[leftPos.y][leftPos.x]))
-		leftPos.h = heuristic(&leftPos, endPosition)
-		_, isInPath := currentPath[leftPos.GetPositionKey()]
-		_, isUnusuable := unusablePositions[leftPos.GetPositionKey()]
-		if leftPos.height <= currentPosition.height+1 && !isInPath && !isUnusuable {
-			candidates = append(candidates, &leftPos)
+func isPositionInSlice(p *Position, slice []*Position) (*Position, bool) {
+	x := p.x
+	y := p.y
+	for i := 0; i < len(slice); i++ {
+		if slice[i].x == x && slice[i].y == y {
+			return slice[i], true
 		}
 	}
+	return nil, false
+}
+
+func getNeighbors(currentPosition *Position, endPosition *Position, gScore float64, input []string, closedList []*Position) []*Position {
+	returnableNeighbors := []*Position{}
+	neighbors := []*Position{}
 	if currentPosition.y > 0 {
 		// up
-		upPos := Position{currentPosition.x, currentPosition.y - 1, -1, -1}
-		upPos.height = getNumericHeight(string(input[upPos.y][upPos.x]))
-		upPos.h = heuristic(&upPos, endPosition)
-		_, isInPath := currentPath[upPos.GetPositionKey()]
-		_, isUnusable := unusablePositions[upPos.GetPositionKey()]
-		if upPos.height <= currentPosition.height+1 && !isInPath && !isUnusable {
-			candidates = append(candidates, &upPos)
-		}
+		neighbors = append(neighbors, &Position{currentPosition.x, currentPosition.y - 1, -1, -1, -1, nil})
+	}
+	if currentPosition.x > 0 {
+		// left
+		neighbors = append(neighbors, &Position{currentPosition.x - 1, currentPosition.y, -1, -1, -1, nil})
+	}
+	if currentPosition.y < len(input)-1 {
+		// down
+		neighbors = append(neighbors, &Position{currentPosition.x, currentPosition.y + 1, -1, -1, -1, nil})
 	}
 	if currentPosition.x < len(input[0])-1 {
 		// right
-		rightPos := Position{currentPosition.x + 1, currentPosition.y, -1, -1}
-		rightPos.height = getNumericHeight(string(input[rightPos.y][rightPos.x]))
-		rightPos.h = heuristic(&rightPos, endPosition)
-		isInPath := currentPath[rightPos.GetPositionKey()]
-		_, isUnusable := unusablePositions[rightPos.GetPositionKey()]
-		if rightPos.height <= currentPosition.height+1 && !isInPath && !isUnusable {
-			candidates = append(candidates, &rightPos)
-		}
-	}
-	if currentPosition.y < len(input)-2 {
-		// down
-		downPos := Position{currentPosition.x, currentPosition.y + 1, -1, -1}
-		downPos.height = getNumericHeight(string(input[downPos.y][downPos.x]))
-		downPos.h = heuristic(&downPos, endPosition)
-		_, isInPath := currentPath[downPos.GetPositionKey()]
-		_, isUnusable := unusablePositions[downPos.GetPositionKey()]
-		if downPos.height <= currentPosition.height+1 && !isInPath && !isUnusable {
-			candidates = append(candidates, &downPos)
-		}
+		neighbors = append(neighbors, &Position{currentPosition.x + 1, currentPosition.y, -1, -1, -1, nil})
 	}
 
-	sort.Sort(ByHeuristic(candidates))
+	for _, n := range neighbors {
+		n.height = getNumericHeight(string(input[n.y][n.x]))
+		n.h = heuristic(n, endPosition)
+		n.g = gScore
+		_, isInClosedList := isPositionInSlice(n, closedList)
+		if n.height <= currentPosition.height+1 && !isInClosedList {
+			returnableNeighbors = append(returnableNeighbors, n)
+		}
+	}
+	return returnableNeighbors
+}
 
-	for _, currentCandidate := range candidates {
-		_, alreadyInPath := currentPath[currentCandidate.GetPositionKey()]
-		/*		for e := path.Back(); e != nil; e = e.Prev() {
-				//for e := path.Front(); e != nil; e = e.Next() {
-				ePosition := e.Value.(*Position)
-				if ePosition.x == currentCandidate.x && ePosition.y == currentCandidate.y {
-					alreadyInPath = true
-					break
+func navigateBetter(startPosition *Position, endPosition *Position, input []string) *Position {
+	openList := []*Position{}
+	closedList := []*Position{}
+	openList = append(openList, startPosition)
+	startPosition.g = 0
+
+	for len(openList) > 0 {
+		sort.Sort(ByFScore(openList))
+		currentPosition := openList[0]
+		openList = openList[1:]
+		closedList = append(closedList, currentPosition)
+
+		log.Printf("Visiting %v, %v", currentPosition.x, currentPosition.y)
+		if currentPosition.x == endPosition.x && currentPosition.y == endPosition.y {
+			return currentPosition
+		}
+
+		neighbors := getNeighbors(currentPosition, endPosition, currentPosition.g+1, input, closedList)
+		for _, n := range neighbors {
+			if p, ok := isPositionInSlice(n, openList); ok {
+				nf := n.g + n.h
+				pf := p.g + p.h
+				if nf < pf {
+					// Replace the position in the open list
+					p.g = n.g
+					p.h = n.h
+					n.parent = currentPosition
+				} else {
+					// Leave the position in the open list - it's better than the one we just found
 				}
-			}*/
-		if alreadyInPath {
-			//log.Printf("Not visiting %v, %v because it's already in the current path", currentCandidate.x, currentCandidate.y)
-			continue
+			} else {
+				// add the neighbor to the open list
+				n.parent = currentPosition
+				openList = append(openList, n)
+			}
 		}
-
-		//log.Printf("current position: %v, %v, Visiting %v, %v", currentPosition.x, currentPosition.y, currentCandidate.x, currentCandidate.y)
-		path.PushBack(currentCandidate)
-		currentPath[currentCandidate.GetPositionKey()] = true
-		if input[currentCandidate.y][currentCandidate.x] == 'E' {
-			return true
-		}
-
-		result := navigate(currentCandidate, endPosition, path, input, currentPath)
-		if result == true {
-			return true
-		}
-		path.Remove(path.Back())
-		delete(currentPath, currentCandidate.GetPositionKey())
 	}
-
-	unusablePositions[currentPosition.GetPositionKey()] = true
-	return false
+	return nil
 }
 
 func main() {
 	input := getInputLines()
+	if input[len(input)-1] == "" {
+		input = input[:len(input)-1]
+	}
+
 	canvas := svg.New(os.Stdout)
 	canvasWidth := len(input[0]) * squareWidth
 	canvasHeight := len(input) * squareHeight
 	canvas.Start(canvasWidth, canvasHeight)
-	startPos := Position{-1, -1, int(math.Inf(-1)), math.Inf(1)}
-	endPos := Position{-1, -1, int(math.Inf(1)), 0}
+	startPos := Position{-1, -1, int(math.Inf(-1)), math.Inf(1), 0, nil}
+	endPos := Position{-1, -1, int(math.Inf(1)), 0, 0, nil}
 	for il, line := range input {
 		chars := strings.Split(line, "")
 		for ic, char := range chars {
 			var red, green, blue int
 			if char == "S" {
-				startPos = Position{ic, il, getNumericHeight("a"), -1}
+				startPos = Position{ic, il, getNumericHeight("a"), -1, 0, nil}
 				red, green, blue = 0, 0, 255
 			} else if char == "E" {
-				endPos = Position{ic, il, getNumericHeight("z"), 0}
+				endPos = Position{ic, il, getNumericHeight("z"), 0, 0, nil}
 				red, green, blue = 0, 255, 0
 			} else {
 				red, green, blue = getColor(getNumericHeight(char))
 			}
-			style := fmt.Sprintf("fill: rgb(%v, %v, %v); alt-text: %v", red, green, blue, char)
+			style := fmt.Sprintf("fill: rgb(%v, %v, %v); xy: '%v--%v'", red, green, blue, ic, il)
 			canvas.Rect(ic*squareWidth, il*squareHeight, squareWidth, squareHeight, style)
 		}
 	}
@@ -285,22 +295,46 @@ func main() {
 		startPos.y,
 		getNumericHeight(string(input[startPos.y][startPos.x])),
 		-1,
+		0,
+		nil,
 	}
 	currentPosition.h = heuristic(&currentPosition, &endPos)
 
-	path := list.New()
-	path.PushBack(&currentPosition)
-	log.Printf("Result: %v", navigate(&currentPosition, &endPos, path, input, map[string]bool{}))
+	result := navigateBetter(&currentPosition, &endPos, input)
+	fmt.Println(result)
 
-	var prev *list.Element
-	for e := path.Front(); e != nil; e = e.Next() {
-		if prev == nil {
-			prev = e
-		} else {
-			drawLine(prev.Value.(*Position), e.Value.(*Position), canvas)
-			prev = e
+	var p *Position
+	p = result
+	stepCount := 0
+	for p != nil {
+		if p.parent != nil {
+			drawLine(p, p.parent, canvas)
+			stepCount++
 		}
+
+		p = p.parent
 	}
 
 	canvas.End()
+	log.Printf("Step count: %v", stepCount)
+	return
+
+	/*
+	   path := list.New()
+	   path.PushBack(&currentPosition)
+	   log.Printf("Result: %v", navigate(&currentPosition, &endPos, path, input, map[string]bool{}))
+
+	   var prev *list.Element
+
+	   	for e := path.Front(); e != nil; e = e.Next() {
+	   		if prev == nil {
+	   			prev = e
+	   		} else {
+	   			drawLine(prev.Value.(*Position), e.Value.(*Position), canvas)
+	   			prev = e
+	   		}
+	   	}
+
+	   canvas.End()
+	*/
 }
